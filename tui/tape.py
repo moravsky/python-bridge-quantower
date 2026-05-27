@@ -6,16 +6,48 @@ from collections import deque
 from datetime import datetime
 from pathlib import Path
 
-from rich.console import Console
-from rich.live import Live
 from rich.table import Table
 from rich.text import Text
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.widgets import Static, Footer
 
 SIDE_COLORS = {"buy": "green", "sell": "red", "unknown": "dim"}
 CAPTURES_DIR = Path(__file__).resolve().parent.parent / "captures"
 
 
-def build_table(prints, symbol, count, elapsed):
+def build_dom_table(bids, asks, max_levels=None):
+    if max_levels is not None:
+        bids = bids[:max_levels]
+        asks = asks[:max_levels]
+
+    table = Table(show_header=True, header_style="bold", expand=True)
+    table.add_column("Bids", justify="right")
+    table.add_column("Price", justify="center")
+    table.add_column("Asks", justify="left")
+
+    for i, ask in enumerate(reversed(asks)):
+        is_best = i == len(asks) - 1
+        table.add_row(
+            "",
+            f"{ask['price']:.2f}",
+            Text(str(ask["size"]), style="red"),
+            style="on dark_red" if is_best else "",
+        )
+
+    for i, bid in enumerate(bids):
+        is_best = i == 0
+        table.add_row(
+            Text(str(bid["size"]), style="green"),
+            f"{bid['price']:.2f}",
+            "",
+            style="on dark_cyan" if is_best else "",
+        )
+
+    return table
+
+
+def build_tape_table(trades, symbol, count, elapsed):
     mps = count / elapsed if elapsed > 0 else 0.0
     table = Table(
         title=f"{symbol}  |  {count} prints  |  {mps:.1f} msgs/sec",
@@ -28,7 +60,7 @@ def build_table(prints, symbol, count, elapsed):
     table.add_column("Size", justify="right")
     table.add_column("Side", justify="center")
 
-    for msg in prints:
+    for msg in trades:
         side = msg.get("side", "unknown")
         color = SIDE_COLORS.get(side, "dim")
         ts = msg.get("ts", "")
@@ -37,63 +69,126 @@ def build_table(prints, symbol, count, elapsed):
         table.add_row(
             ts,
             f"{msg.get('price', 0):.2f}",
-            str(msg.get('size', 0)),
+            str(msg.get("size", 0)),
             Text(side, style=color),
         )
 
     return table
 
 
-def run_file_mode(args):
-    console = Console()
-    tape_depth = max(console.size.height - 6, 5)
-    prints = deque(maxlen=tape_depth)
-    symbol = None
-    count = 0
-    start = time.monotonic()
+class DomPanel(Static):
+    pass
 
-    with open(args.file) as f:
-        with Live(console=console, refresh_per_second=30) as live:
+
+class TapePanel(Static):
+    pass
+
+
+class TradeApp(App):
+    CSS = """
+    DomPanel { height: 2fr; max-height: 24; }
+    TapePanel { height: 1fr; min-height: 8; }
+    """
+
+    BINDINGS = [
+        Binding("d", "toggle_dom", "DOM"),
+        Binding("t", "toggle_tape", "Trades"),
+        Binding("q", "quit", "Quit"),
+    ]
+
+    def __init__(self, source_file=None, port=8765, delay=0.0):
+        super().__init__()
+        self._source_file = source_file
+        self._port = port
+        self._delay = delay
+        self._symbol = None
+        self._trade_count = 0
+        self._start = time.monotonic()
+        self._trades = deque(maxlen=50)
+        self._bids = []
+        self._asks = []
+        self._capture_file = None
+        self._capture_path = None
+        self._running = True
+
+    def compose(self) -> ComposeResult:
+        yield DomPanel("Waiting for DOM data...")
+        yield TapePanel("Waiting for trades...")
+        yield Footer()
+
+    def on_mount(self):
+        self.set_interval(1 / 15, self._refresh_ui)
+        if self._source_file:
+            self.run_worker(self._read_file, thread=True)
+        else:
+            self.title = f"Listening on 127.0.0.1:{self._port}"
+            self.run_worker(self._read_socket, thread=True)
+
+    def on_unmount(self):
+        self._running = False
+
+    def _refresh_ui(self):
+        dom_panel = self.query_one(DomPanel)
+        tape_panel = self.query_one(TapePanel)
+
+        if dom_panel.display and self._bids:
+            available = dom_panel.size.height - 4
+            max_levels = max(available // 2, 1) if available > 0 else None
+            dom_panel.update(build_dom_table(self._bids, self._asks, max_levels))
+
+        if tape_panel.display:
+            elapsed = time.monotonic() - self._start
+            tape_panel.update(build_tape_table(
+                self._trades, self._symbol or "...", self._trade_count, elapsed,
+            ))
+
+    def action_toggle_dom(self):
+        panel = self.query_one(DomPanel)
+        panel.display = not panel.display
+
+    def action_toggle_tape(self):
+        panel = self.query_one(TapePanel)
+        panel.display = not panel.display
+
+    def _process_msg(self, msg):
+        if self._symbol is None:
+            self._symbol = msg.get("symbol", "UNKNOWN")
+            self.call_from_thread(setattr, self, "title", self._symbol)
+
+        msg_type = msg.get("type", "trade")
+        if msg_type == "trade":
+            self._trades.append(msg)
+            self._trade_count += 1
+        elif msg_type == "dom":
+            self._bids = msg.get("bids", [])
+            self._asks = msg.get("asks", [])
+
+    def _read_file(self):
+        with open(self._source_file) as f:
             for line in f:
+                if not self._running:
+                    break
                 line = line.strip()
                 if not line:
                     continue
-                msg = json.loads(line)
-                if symbol is None:
-                    symbol = msg.get("symbol", "UNKNOWN")
-                prints.append(msg)
-                count += 1
-                elapsed = time.monotonic() - start
-                live.update(build_table(prints, symbol, count, elapsed))
-                if args.delay > 0:
-                    time.sleep(args.delay)
+                self._process_msg(json.loads(line))
+                if self._delay > 0:
+                    time.sleep(self._delay)
 
+    def _read_socket(self):
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("127.0.0.1", self._port))
+        srv.listen(1)
 
-def run_socket_mode(args):
-    console = Console()
-    tape_depth = max(console.size.height - 6, 5)
-    prints = deque(maxlen=tape_depth)
-    symbol = None
-    count = 0
-    capture_file = None
-    capture_path = None
+        conn, addr = srv.accept()
+        conn.settimeout(0.5)
 
-    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind(("127.0.0.1", args.port))
-    srv.listen(1)
-    console.print(f"Listening on 127.0.0.1:{args.port} ...")
+        CAPTURES_DIR.mkdir(exist_ok=True)
 
-    conn, addr = srv.accept()
-    conn.settimeout(0.5)
-    console.print(f"Connected: {addr}")
-
-    start = time.monotonic()
-
-    try:
-        with Live(console=console, refresh_per_second=15) as live:
+        try:
             buf = ""
-            while True:
+            while self._running:
                 try:
                     data = conn.recv(4096)
                 except socket.timeout:
@@ -106,31 +201,23 @@ def run_socket_mode(args):
                     line = line.strip()
                     if not line:
                         continue
+
                     msg = json.loads(line)
-                    if symbol is None:
-                        symbol = msg.get("symbol", "LIVE")
-                        CAPTURES_DIR.mkdir(exist_ok=True)
-                        capture_name = f"{symbol}-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}.jsonl"
-                        capture_path = CAPTURES_DIR / capture_name
-                        capture_file = open(capture_path, "a")
-                    if capture_file:
-                        capture_file.write(line + "\n")
-                        capture_file.flush()
-                    if msg.get("type", "trade") != "trade":
-                        continue
-                    prints.append(msg)
-                    count += 1
-                    elapsed = time.monotonic() - start
-                    live.update(build_table(prints, symbol, count, elapsed))
-    except KeyboardInterrupt:
-        pass
-    finally:
-        if capture_file:
-            capture_file.close()
-        conn.close()
-        srv.close()
-        if capture_path:
-            console.print(f"Captured {count} prints to {capture_path}")
+
+                    if self._capture_file is None:
+                        sym = msg.get("symbol", "LIVE")
+                        name = f"{sym}-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}.jsonl"
+                        self._capture_path = CAPTURES_DIR / name
+                        self._capture_file = open(self._capture_path, "a")
+
+                    self._capture_file.write(line + "\n")
+                    self._capture_file.flush()
+                    self._process_msg(msg)
+        finally:
+            if self._capture_file:
+                self._capture_file.close()
+            conn.close()
+            srv.close()
 
 
 def main():
@@ -140,10 +227,8 @@ def main():
     parser.add_argument("--delay", type=float, default=0.0, help="seconds between lines in file mode")
     args = parser.parse_args()
 
-    if args.file:
-        run_file_mode(args)
-    else:
-        run_socket_mode(args)
+    app = TradeApp(source_file=args.file, port=args.port, delay=args.delay)
+    app.run()
 
 
 if __name__ == "__main__":
