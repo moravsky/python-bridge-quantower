@@ -3,7 +3,7 @@
 Streams live trade prints and Level 2 order book data from Quantower into a
 Python terminal UI over a localhost TCP socket.
 
-https://github.com/moravsky/python-bridge-quantower/raw/main/TUI-Recording.mp4
+https://github.com/user-attachments/assets/dc364044-a92d-4e19-bd40-35471f3ce35e
 
 ## What it does
 
