@@ -85,6 +85,7 @@ def run_socket_mode(args):
     console.print(f"Listening on 127.0.0.1:{args.port} ...")
 
     conn, addr = srv.accept()
+    conn.settimeout(0.5)
     console.print(f"Connected: {addr}")
 
     start = time.monotonic()
@@ -93,7 +94,10 @@ def run_socket_mode(args):
         with Live(console=console, refresh_per_second=15) as live:
             buf = ""
             while True:
-                data = conn.recv(4096)
+                try:
+                    data = conn.recv(4096)
+                except socket.timeout:
+                    continue
                 if not data:
                     break
                 buf += data.decode("utf-8")
@@ -112,6 +116,8 @@ def run_socket_mode(args):
                     if capture_file:
                         capture_file.write(line + "\n")
                         capture_file.flush()
+                    if msg.get("type", "trade") != "trade":
+                        continue
                     prints.append(msg)
                     count += 1
                     elapsed = time.monotonic() - start
