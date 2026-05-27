@@ -197,8 +197,18 @@ class TradeApp(App):
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         srv.bind(("127.0.0.1", self._port))
         srv.listen(1)
+        srv.settimeout(0.5)
 
-        conn, addr = srv.accept()
+        conn = None
+        while self._running and conn is None:
+            try:
+                conn, addr = srv.accept()
+            except socket.timeout:
+                continue
+
+        if conn is None:
+            srv.close()
+            return
         conn.settimeout(0.5)
 
         CAPTURES_DIR.mkdir(exist_ok=True)
