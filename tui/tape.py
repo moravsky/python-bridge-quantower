@@ -105,6 +105,7 @@ class TradeApp(App):
         Binding("d", "toggle_dom", "DOM"),
         Binding("t", "toggle_tape", "Trades"),
         Binding("q", "quit", "Quit"),
+        Binding("ctrl+c", "quit", show=False),
     ]
 
     def __init__(self, source_file=None, port=8765, delay=0.0):
