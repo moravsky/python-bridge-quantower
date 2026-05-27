@@ -27,6 +27,8 @@ def build_dom_table(bids, asks, max_levels=None, bar_width=15):
 
     all_sizes = [b["size"] for b in bids] + [a["size"] for a in asks]
     max_size = max(all_sizes) if all_sizes else 1
+    bid_width = max((len(str(b["size"])) for b in bids), default=1)
+    ask_width = max((len(str(a["size"])) for a in asks), default=1)
 
     table = Table(show_header=True, header_style="bold", expand=True)
     table.add_column("Bids", justify="right", ratio=1)
@@ -37,10 +39,11 @@ def build_dom_table(bids, asks, max_levels=None, bar_width=15):
         is_best = i == len(asks) - 1
         size = ask["size"]
         bars = "█" * max(int(size / max_size * bar_width), 1)
+        label = str(size).rjust(ask_width)
         table.add_row(
             "",
             f"{ask['price']:.2f}",
-            Text(f"{size} {bars}", style=ASK_COLOR),
+            Text(f"{label} {bars}", style=ASK_COLOR),
             style=BEST_ASK_BG if is_best else "",
         )
 
@@ -48,8 +51,9 @@ def build_dom_table(bids, asks, max_levels=None, bar_width=15):
         is_best = i == 0
         size = bid["size"]
         bars = "█" * max(int(size / max_size * bar_width), 1)
+        label = str(size).rjust(bid_width)
         table.add_row(
-            Text(f"{bars} {size}", style=BID_COLOR),
+            Text(f"{bars} {label}", style=BID_COLOR),
             f"{bid['price']:.2f}",
             "",
             style=BEST_BID_BG if is_best else "",
