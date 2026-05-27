@@ -5,6 +5,7 @@ tmp/
 *.user
 *.suo
 *.cache
+*.pyc
 _zzz_*
 _ZZZ_*
 zzz_*

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Net.Sockets;
 using System.Text.Json;
 using TradingPlatform.BusinessLayer;
 
@@ -13,8 +14,10 @@ public class TradeStreamStrategy : Strategy, ICurrentSymbol
     [InputParameter("Sample Percent", sortIndex: 10, minimum: 1, maximum: 100, increment: 1, decimalPlaces: 0)]
     public int SamplePct { get; set; } = 100;
 
-    private const string OutputDir = @"C:\Users\Lex\repos\python-bridge-quantower\captures";
+    [InputParameter("Port", sortIndex: 20, minimum: 1, maximum: 65535, increment: 1, decimalPlaces: 0)]
+    public int Port { get; set; } = 8765;
 
+    private TcpClient _client;
     private StreamWriter _writer;
     private Random _rng = new();
     private int _count;
@@ -25,7 +28,7 @@ public class TradeStreamStrategy : Strategy, ICurrentSymbol
     public TradeStreamStrategy()
     {
         Name = "Trade Stream";
-        Description = "Streams trade prints to a JSONL file";
+        Description = "Streams trade prints over TCP socket";
     }
 
     protected override void OnRun()
@@ -37,17 +40,21 @@ public class TradeStreamStrategy : Strategy, ICurrentSymbol
             return;
         }
 
-        if (!Directory.Exists(OutputDir))
-            Directory.CreateDirectory(OutputDir);
-        var symbolName = CurrentSymbol.Name.Replace("/", "-").Replace("\\", "-");
-        var filename = $"{symbolName}-{DateTime.Now:yyyy-MM-dd-HHmmss}.jsonl";
-        var path = Path.Combine(OutputDir, filename);
+        try
+        {
+            _client = new TcpClient("127.0.0.1", Port);
+            _writer = new StreamWriter(_client.GetStream()) { AutoFlush = true };
+        }
+        catch (SocketException ex)
+        {
+            Log($"Failed to connect to 127.0.0.1:{Port}: {ex.Message}", StrategyLoggingLevel.Error);
+            Stop();
+            return;
+        }
 
-        _writer = new StreamWriter(path, append: true) { AutoFlush = true };
         _count = 0;
-
         CurrentSymbol.NewLast += OnNewLast;
-        Log($"Streaming to {path} (SamplePct={SamplePct})");
+        Log($"Streaming to 127.0.0.1:{Port} (SamplePct={SamplePct})");
     }
 
     protected override void OnStop()
@@ -57,6 +64,8 @@ public class TradeStreamStrategy : Strategy, ICurrentSymbol
 
         _writer?.Dispose();
         _writer = null;
+        _client?.Dispose();
+        _client = null;
 
         Log($"Stopped after {_count} prints written");
     }

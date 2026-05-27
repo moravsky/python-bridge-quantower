@@ -1,7 +1,9 @@
 import argparse
 import json
+import socket
 import time
 from collections import deque
+from datetime import datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -10,6 +12,7 @@ from rich.table import Table
 from rich.text import Text
 
 SIDE_COLORS = {"buy": "green", "sell": "red", "unknown": "dim"}
+CAPTURES_DIR = Path(__file__).resolve().parent.parent / "captures"
 
 
 def parse_symbol(filepath):
@@ -50,18 +53,9 @@ def build_table(prints, symbol, count, elapsed):
     return table
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Trade tape TUI")
-    parser.add_argument("file", help="JSONL capture file to display")
-    parser.add_argument(
-        "--delay", type=float, default=0.0,
-        help="seconds between lines (0 = fast as possible)",
-    )
-    args = parser.parse_args()
-
+def run_file_mode(args):
     console = Console()
     tape_depth = max(console.size.height - 6, 5)
-
     prints = deque(maxlen=tape_depth)
     symbol = parse_symbol(args.file)
     count = 0
@@ -81,6 +75,70 @@ def main():
                 if args.delay > 0:
                     time.sleep(args.delay)
 
+
+def run_socket_mode(args):
+    console = Console()
+    tape_depth = max(console.size.height - 6, 5)
+    prints = deque(maxlen=tape_depth)
+    symbol = args.symbol
+    count = 0
+
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", args.port))
+    srv.listen(1)
+    console.print(f"Listening on 127.0.0.1:{args.port} ...")
+
+    conn, addr = srv.accept()
+    console.print(f"Connected: {addr}")
+
+    CAPTURES_DIR.mkdir(exist_ok=True)
+    capture_name = f"{symbol}-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}.jsonl"
+    capture_path = CAPTURES_DIR / capture_name
+
+    start = time.monotonic()
+
+    try:
+        with open(capture_path, "a") as capture:
+            with Live(console=console, refresh_per_second=15) as live:
+                buf = ""
+                while True:
+                    data = conn.recv(4096)
+                    if not data:
+                        break
+                    buf += data.decode("utf-8")
+                    while "\n" in buf:
+                        line, buf = buf.split("\n", 1)
+                        line = line.strip()
+                        if not line:
+                            continue
+                        capture.write(line + "\n")
+                        capture.flush()
+                        msg = json.loads(line)
+                        prints.append(msg)
+                        count += 1
+                        elapsed = time.monotonic() - start
+                        live.update(build_table(prints, symbol, count, elapsed))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        conn.close()
+        srv.close()
+        console.print(f"Captured {count} prints to {capture_path}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Trade tape TUI")
+    parser.add_argument("file", nargs="?", help="JSONL capture file (omit for socket mode)")
+    parser.add_argument("--port", type=int, default=8765, help="TCP port for socket mode")
+    parser.add_argument("--symbol", default="LIVE", help="symbol label for socket mode")
+    parser.add_argument("--delay", type=float, default=0.0, help="seconds between lines in file mode")
+    args = parser.parse_args()
+
+    if args.file:
+        run_file_mode(args)
+    else:
+        run_socket_mode(args)
 
 
 if __name__ == "__main__":
