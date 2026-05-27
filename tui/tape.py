@@ -58,10 +58,11 @@ def build_dom_table(bids, asks, max_levels=None, bar_width=15):
     return table
 
 
-def build_tape_table(trades, symbol, count, elapsed):
+def build_tape_table(trades, symbol="", count=0, elapsed=0):
     mps = count / elapsed if elapsed > 0 else 0.0
+    title = f"{symbol}  |  {count} prints  |  {mps:.1f} msgs/sec" if symbol else ""
     table = Table(
-        title=f"{symbol}  |  {count} prints  |  {mps:.1f} msgs/sec",
+        title=title,
         show_header=True,
         header_style="bold",
         expand=True,
@@ -124,8 +125,8 @@ class TradeApp(App):
         self._running = True
 
     def compose(self) -> ComposeResult:
-        yield DomPanel("Waiting for DOM data...")
         yield TapePanel("Waiting for trades...")
+        yield DomPanel("Waiting for DOM data...")
         yield Footer()
 
     def on_mount(self):
@@ -143,16 +144,20 @@ class TradeApp(App):
         dom_panel = self.query_one(DomPanel)
         tape_panel = self.query_one(TapePanel)
 
+        elapsed = time.monotonic() - self._start
+
+        if tape_panel.display:
+            tape_panel.update(build_tape_table(
+                self._trades,
+                symbol=self._symbol or "...",
+                count=self._trade_count,
+                elapsed=elapsed,
+            ))
+
         if dom_panel.display and self._bids:
             available = dom_panel.size.height - 4
             max_levels = max(available // 2, 1) if available > 0 else None
             dom_panel.update(build_dom_table(self._bids, self._asks, max_levels))
-
-        if tape_panel.display:
-            elapsed = time.monotonic() - self._start
-            tape_panel.update(build_tape_table(
-                self._trades, self._symbol or "...", self._trade_count, elapsed,
-            ))
 
     def action_toggle_dom(self):
         panel = self.query_one(DomPanel)
