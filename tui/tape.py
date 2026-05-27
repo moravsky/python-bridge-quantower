@@ -12,36 +12,47 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Static, Footer
 
-SIDE_COLORS = {"buy": "green", "sell": "red", "unknown": "dim"}
+SIDE_COLORS = {"buy": "#33bb33", "sell": "#bb3333", "unknown": "dim"}
+BID_COLOR = "#33aa33"
+ASK_COLOR = "#bb3333"
+BEST_BID_BG = "on #114422"
+BEST_ASK_BG = "on #441111"
 CAPTURES_DIR = Path(__file__).resolve().parent.parent / "captures"
 
 
-def build_dom_table(bids, asks, max_levels=None):
+def build_dom_table(bids, asks, max_levels=None, bar_width=15):
     if max_levels is not None:
         bids = bids[:max_levels]
         asks = asks[:max_levels]
 
+    all_sizes = [b["size"] for b in bids] + [a["size"] for a in asks]
+    max_size = max(all_sizes) if all_sizes else 1
+
     table = Table(show_header=True, header_style="bold", expand=True)
-    table.add_column("Bids", justify="right")
-    table.add_column("Price", justify="center")
-    table.add_column("Asks", justify="left")
+    table.add_column("Bids", justify="right", ratio=1)
+    table.add_column("Price", justify="center", width=12)
+    table.add_column("Asks", justify="left", ratio=1)
 
     for i, ask in enumerate(reversed(asks)):
         is_best = i == len(asks) - 1
+        size = ask["size"]
+        bars = "█" * max(int(size / max_size * bar_width), 1)
         table.add_row(
             "",
             f"{ask['price']:.2f}",
-            Text(str(ask["size"]), style="red"),
-            style="on dark_red" if is_best else "",
+            Text(f"{size} {bars}", style=ASK_COLOR),
+            style=BEST_ASK_BG if is_best else "",
         )
 
     for i, bid in enumerate(bids):
         is_best = i == 0
+        size = bid["size"]
+        bars = "█" * max(int(size / max_size * bar_width), 1)
         table.add_row(
-            Text(str(bid["size"]), style="green"),
+            Text(f"{bars} {size}", style=BID_COLOR),
             f"{bid['price']:.2f}",
             "",
-            style="on dark_cyan" if is_best else "",
+            style=BEST_BID_BG if is_best else "",
         )
 
     return table
