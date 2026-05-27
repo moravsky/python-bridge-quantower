@@ -15,15 +15,6 @@ SIDE_COLORS = {"buy": "green", "sell": "red", "unknown": "dim"}
 CAPTURES_DIR = Path(__file__).resolve().parent.parent / "captures"
 
 
-def parse_symbol(filepath):
-    stem = Path(filepath).stem
-    parts = stem.split("-")
-    for i, part in enumerate(parts):
-        if len(part) == 4 and part.isdigit():
-            return "-".join(parts[:i]) if i > 0 else stem
-    return stem
-
-
 def build_table(prints, symbol, count, elapsed):
     mps = count / elapsed if elapsed > 0 else 0.0
     table = Table(
@@ -57,7 +48,7 @@ def run_file_mode(args):
     console = Console()
     tape_depth = max(console.size.height - 6, 5)
     prints = deque(maxlen=tape_depth)
-    symbol = parse_symbol(args.file)
+    symbol = None
     count = 0
     start = time.monotonic()
 
@@ -68,6 +59,8 @@ def run_file_mode(args):
                 if not line:
                     continue
                 msg = json.loads(line)
+                if symbol is None:
+                    symbol = msg.get("symbol", "UNKNOWN")
                 prints.append(msg)
                 count += 1
                 elapsed = time.monotonic() - start
@@ -80,8 +73,10 @@ def run_socket_mode(args):
     console = Console()
     tape_depth = max(console.size.height - 6, 5)
     prints = deque(maxlen=tape_depth)
-    symbol = args.symbol
+    symbol = None
     count = 0
+    capture_file = None
+    capture_path = None
 
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -92,46 +87,50 @@ def run_socket_mode(args):
     conn, addr = srv.accept()
     console.print(f"Connected: {addr}")
 
-    CAPTURES_DIR.mkdir(exist_ok=True)
-    capture_name = f"{symbol}-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}.jsonl"
-    capture_path = CAPTURES_DIR / capture_name
-
     start = time.monotonic()
 
     try:
-        with open(capture_path, "a") as capture:
-            with Live(console=console, refresh_per_second=15) as live:
-                buf = ""
-                while True:
-                    data = conn.recv(4096)
-                    if not data:
-                        break
-                    buf += data.decode("utf-8")
-                    while "\n" in buf:
-                        line, buf = buf.split("\n", 1)
-                        line = line.strip()
-                        if not line:
-                            continue
-                        capture.write(line + "\n")
-                        capture.flush()
-                        msg = json.loads(line)
-                        prints.append(msg)
-                        count += 1
-                        elapsed = time.monotonic() - start
-                        live.update(build_table(prints, symbol, count, elapsed))
+        with Live(console=console, refresh_per_second=15) as live:
+            buf = ""
+            while True:
+                data = conn.recv(4096)
+                if not data:
+                    break
+                buf += data.decode("utf-8")
+                while "\n" in buf:
+                    line, buf = buf.split("\n", 1)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    msg = json.loads(line)
+                    if symbol is None:
+                        symbol = msg.get("symbol", "LIVE")
+                        CAPTURES_DIR.mkdir(exist_ok=True)
+                        capture_name = f"{symbol}-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}.jsonl"
+                        capture_path = CAPTURES_DIR / capture_name
+                        capture_file = open(capture_path, "a")
+                    if capture_file:
+                        capture_file.write(line + "\n")
+                        capture_file.flush()
+                    prints.append(msg)
+                    count += 1
+                    elapsed = time.monotonic() - start
+                    live.update(build_table(prints, symbol, count, elapsed))
     except KeyboardInterrupt:
         pass
     finally:
+        if capture_file:
+            capture_file.close()
         conn.close()
         srv.close()
-        console.print(f"Captured {count} prints to {capture_path}")
+        if capture_path:
+            console.print(f"Captured {count} prints to {capture_path}")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Trade tape TUI")
     parser.add_argument("file", nargs="?", help="JSONL capture file (omit for socket mode)")
     parser.add_argument("--port", type=int, default=8765, help="TCP port for socket mode")
-    parser.add_argument("--symbol", default="LIVE", help="symbol label for socket mode")
     parser.add_argument("--delay", type=float, default=0.0, help="seconds between lines in file mode")
     args = parser.parse_args()
 

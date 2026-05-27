@@ -29,8 +29,10 @@ The TUI can't tell live from file — both are the same JSON contract. Confirm t
 ## The message contract
 One JSON object per line, UTF-8, newline-framed:
 ```json
-{"ts": "2026-05-26T14:32:01.123456", "price": 21050.25, "size": 3, "side": "buy"}
+{"type": "trade", "symbol": "MNQ", "ts": "2026-05-26T14:32:01.123456", "price": 21050.25, "size": 3, "side": "buy"}
 ```
+- `type` — `"trade"` (required; enables multiplexing with future message types)
+- `symbol` — instrument name as reported by Quantower
 - `ts` — ISO-8601 string, the print's event time
 - `price` — number
 - `size` — integer (contracts)
@@ -39,7 +41,7 @@ One JSON object per line, UTF-8, newline-framed:
 Every producer conforms to this; the TUI only ever parses this. Freeze it after Phase 1.
 
 ## Tech stack
-- **Python:** `rich` for the TUI, stdlib `socket` and `json`. Keep dependencies to just `rich`. `--port` CLI arg for socket mode (default `8765`).
+- **Python:** `textual` (includes `rich`) for the TUI, stdlib `socket` and `json`. `--port` CLI arg for socket mode (default `8765`).
 - **C#:** .NET, `TradingPlatform.BusinessLayer`, `System.Net.Sockets`, `System.Text.Json`. No NuGet beyond what Quantower ships + built-in JSON. Reference assemblies from `repos/QuantowerRef`. Use the `init-quantower` skill to scaffold the strategy project.
 - Socket: `127.0.0.1`, configurable port (default `8765`), TCP, newline-framed. The TUI is the server and starts first; the strategy is the client.
 

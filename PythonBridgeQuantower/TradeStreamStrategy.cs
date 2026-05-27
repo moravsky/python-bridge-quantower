@@ -84,6 +84,8 @@ public class TradeStreamStrategy : Strategy, ICurrentSymbol
 
         var line = JsonSerializer.Serialize(new
         {
+            type = "trade",
+            symbol = symbol.Name,
             ts = last.Time.ToString("O"),
             price = last.Price,
             size = (int)last.Size,
