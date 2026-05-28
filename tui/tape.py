@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 import socket
 import time
 from collections import deque
@@ -17,7 +18,7 @@ BID_COLOR = "#33aa33"
 ASK_COLOR = "#bb3333"
 BEST_BID_BG = "on #114422"
 BEST_ASK_BG = "on #441111"
-CAPTURES_DIR = Path(__file__).resolve().parent.parent / "captures"
+CAPTURES_DIR = Path(__file__).resolve().parent / "captures"
 
 
 def build_dom_table(bids, asks, max_levels=None, bar_width=15):
@@ -102,7 +103,7 @@ class TapePanel(Static):
 
 class TradeApp(App):
     CSS = """
-    DomPanel { height: 2fr; max-height: 24; }
+    DomPanel { min-height: 3; }
     TapePanel { height: 1fr; min-height: 8; }
     """
 
@@ -159,9 +160,8 @@ class TradeApp(App):
             ))
 
         if dom_panel.display and self._bids:
-            available = dom_panel.size.height - 4
-            max_levels = max(available // 2, 1) if available > 0 else None
-            dom_panel.update(build_dom_table(self._bids, self._asks, max_levels))
+            dom_panel.styles.height = len(self._bids) + len(self._asks) + 4
+            dom_panel.update(build_dom_table(self._bids, self._asks))
 
     def action_toggle_dom(self):
         panel = self.query_one(DomPanel)
@@ -237,7 +237,8 @@ class TradeApp(App):
 
                     if self._capture_file is None:
                         sym = msg.get("symbol", "LIVE")
-                        name = f"{sym}-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}.jsonl"
+                        safe_sym = re.sub(r"[^A-Za-z0-9._-]+", "-", sym).strip("-") or "LIVE"
+                        name = f"{safe_sym}-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}.jsonl"
                         self._capture_path = CAPTURES_DIR / name
                         self._capture_file = open(self._capture_path, "a")
 
