@@ -16,9 +16,9 @@ live scrolling time-and-sales tape. The strategy targets .NET 8.0, x64. See
 dotnet build PythonBridgeQuantower/PythonBridgeQuantower.csproj -c Release
 ```
 
-The `.csproj` resolves the Quantower SDK reference dynamically by scanning
-`C:\Quantower\TradingPlatform\v*` and picking the lexicographically last `v*`
-directory. Override `QT_Root` if Quantower is installed elsewhere.
+The `.csproj` pins the Quantower SDK reference to a single install path
+via `QT_Path` (e.g. `C:\Quantower\TradingPlatform\v1.145.17`). Update
+`QT_Path` when Quantower is upgraded or installed elsewhere.
 `<Private>False</Private>` on the SDK reference is intentional -- the host
 process supplies the DLL at runtime.
 
@@ -27,13 +27,14 @@ process supplies the DLL at runtime.
 Build first, then deploy:
 
 ```powershell
-.\deploy.ps1                         # Debug -> Dev (default)
-.\deploy.ps1 -Config Release         # Release -> Prod
-.\deploy.ps1 -Config Debug -Target Prod  # Debug -> Prod (warns, 5s delay)
+.\deploy.ps1                         # Debug -> C:\Quantower (default)
+.\deploy.ps1 -Config Release         # Release -> C:\Quantower
+.\deploy.ps1 -Dev                    # Debug -> C:\QuantowerDev
+.\deploy.ps1 -Config Release -Dev    # Release -> C:\QuantowerDev
 ```
 
-Default mapping: `Debug` -> `Dev` (`C:\QuantowerDev`), `Release` -> `Prod`
-(`C:\Quantower`). Destination:
+Default install root is `C:\Quantower`. The `-Dev` switch redirects to
+`C:\QuantowerDev`. Destination:
 `<QuantowerRoot>\Settings\Scripts\Strategies\PythonBridgeQuantower`.
 
 ## Architecture Notes
@@ -50,7 +51,8 @@ why things are the way they are, not just what they are.
 
 ## Environment & Tech Stack
 
-- .NET 8.0 (Quantower compatibility)
+- Target framework: net8.0 (Quantower compatibility)
+- Build SDK: .NET 10.0 SDK x64 (https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.300/dotnet-sdk-10.0.300-win-x64.exe)
 - x64 (required for Quantower)
 - Windows 11 ARM running x64 via Prism/emulation
 - TradingPlatform.BusinessLayer (Quantower API)

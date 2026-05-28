@@ -16,8 +16,9 @@ https://github.com/user-attachments/assets/dc364044-a92d-4e19-bd40-35471f3ce35e
 
 ### Prerequisites
 
-- Quantower with a data feed connected (L2 data for DOM)
-- .NET 8.0 SDK (x64)
+- Quantower v1.145.17 with a data feed connected (L2 data for DOM).
+  The csproj pins this version via `QT_Path`; edit it for other versions.
+- [.NET 10.0 SDK (Windows x64)](https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.300/dotnet-sdk-10.0.300-win-x64.exe)
 - Python 3.10+
 
 ### Install Python dependencies
@@ -30,8 +31,8 @@ pip install -r requirements.txt
 
 ```powershell
 dotnet build PythonBridgeQuantower/PythonBridgeQuantower.csproj -c Debug
-.\deploy.ps1                     # deploys to C:\QuantowerDev
-.\deploy.ps1 -Config Release     # deploys to C:\Quantower
+.\deploy.ps1                     # deploys to C:\Quantower
+.\deploy.ps1 -Dev                # deploys to C:\QuantowerDev
 ```
 
 ### Run
