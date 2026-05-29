@@ -1,10 +1,10 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Net.Sockets;
-using System.Text.Json;
+using Google.Protobuf;
+using NetMQ;
+using NetMQ.Sockets;
+using PythonBridgeQuantower.Proto;
 using TradingPlatform.BusinessLayer;
 
 namespace PythonBridgeQuantower;
@@ -23,8 +23,7 @@ public class TradeStreamStrategy : Strategy, ICurrentSymbol
     [InputParameter("DOM Levels", sortIndex: 30, minimum: 1, maximum: 50, increment: 1, decimalPlaces: 0)]
     public int DomLevels { get; set; } = 10;
 
-    private TcpClient _client;
-    private StreamWriter _writer;
+    private PublisherSocket _pub;
     private Random _rng = new();
     private int _count;
     private long _lastDomTicks;
@@ -35,7 +34,7 @@ public class TradeStreamStrategy : Strategy, ICurrentSymbol
     public TradeStreamStrategy()
     {
         Name = "Trade Stream";
-        Description = "Streams trade prints and DOM over TCP socket";
+        Description = "Publishes trade prints and DOM over a ZeroMQ PUB socket (Protobuf payloads)";
     }
 
     protected override void OnRun()
@@ -49,12 +48,12 @@ public class TradeStreamStrategy : Strategy, ICurrentSymbol
 
         try
         {
-            _client = new TcpClient("127.0.0.1", Port);
-            _writer = new StreamWriter(_client.GetStream()) { AutoFlush = true };
+            _pub = new PublisherSocket();
+            _pub.Bind($"tcp://127.0.0.1:{Port}");
         }
-        catch (SocketException ex)
+        catch (Exception ex)
         {
-            Log($"Failed to connect to 127.0.0.1:{Port}: {ex.Message}", StrategyLoggingLevel.Error);
+            Log($"Failed to bind PUB socket on 127.0.0.1:{Port}: {ex.Message}", StrategyLoggingLevel.Error);
             Stop();
             return;
         }
@@ -63,7 +62,7 @@ public class TradeStreamStrategy : Strategy, ICurrentSymbol
         _lastDomTicks = 0;
         CurrentSymbol.NewLast += OnNewLast;
         CurrentSymbol.NewLevel2 += OnNewLevel2;
-        Log($"Streaming to 127.0.0.1:{Port} (SamplePct={SamplePct}, DomLevels={DomLevels})");
+        Log($"Publishing on tcp://127.0.0.1:{Port} (SamplePct={SamplePct}, DomLevels={DomLevels})");
     }
 
     protected override void OnStop()
@@ -74,12 +73,10 @@ public class TradeStreamStrategy : Strategy, ICurrentSymbol
             CurrentSymbol.NewLevel2 -= OnNewLevel2;
         }
 
-        _writer?.Dispose();
-        _writer = null;
-        _client?.Dispose();
-        _client = null;
+        _pub?.Dispose();
+        _pub = null;
 
-        Log($"Stopped after {_count} prints written");
+        Log($"Stopped after {_count} prints published");
     }
 
     private void OnNewLast(Symbol symbol, Last last)
@@ -94,17 +91,16 @@ public class TradeStreamStrategy : Strategy, ICurrentSymbol
             _ => "unknown"
         };
 
-        var line = JsonSerializer.Serialize(new
+        var msg = new TradeMessage
         {
-            type = "trade",
-            symbol = symbol.Name,
-            ts = last.Time.ToString("O"),
-            price = last.Price,
-            size = (int)last.Size,
-            side
-        });
+            Symbol = symbol.Name,
+            Ts = last.Time.ToString("O"),
+            Price = last.Price,
+            Size = (int)last.Size,
+            Side = side
+        };
 
-        _writer?.WriteLine(line);
+        Publish("trade", msg.ToByteArray());
         _count++;
     }
 
@@ -127,25 +123,28 @@ public class TradeStreamStrategy : Strategy, ICurrentSymbol
                 }
             });
 
-        var bids = snapshot.Bids?
-            .Take(DomLevels)
-            .Select(b => new { price = b.Price, size = (int)b.Size })
-            .ToArray() ?? [];
-
-        var asks = snapshot.Asks?
-            .Take(DomLevels)
-            .Select(a => new { price = a.Price, size = (int)a.Size })
-            .ToArray() ?? [];
-
-        var line = JsonSerializer.Serialize(new
+        var msg = new DomMessage
         {
-            type = "dom",
-            symbol = symbol.Name,
-            ts = DateTime.UtcNow.ToString("O"),
-            bids,
-            asks
-        });
+            Symbol = symbol.Name,
+            Ts = DateTime.UtcNow.ToString("O")
+        };
 
-        _writer?.WriteLine(line);
+        if (snapshot.Bids != null)
+        {
+            foreach (var b in snapshot.Bids.Take(DomLevels))
+                msg.Bids.Add(new DomLevel { Price = b.Price, Size = (int)b.Size });
+        }
+        if (snapshot.Asks != null)
+        {
+            foreach (var a in snapshot.Asks.Take(DomLevels))
+                msg.Asks.Add(new DomLevel { Price = a.Price, Size = (int)a.Size });
+        }
+
+        Publish("dom", msg.ToByteArray());
+    }
+
+    private void Publish(string topic, byte[] payload)
+    {
+        _pub?.SendMoreFrame(topic).SendFrame(payload);
     }
 }

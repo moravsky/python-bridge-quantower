@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+option csharp_namespace = "PythonBridgeQuantower.Proto";
+
+package python_bridge;
+
+message TradeMessage {
+  string symbol = 1;
+  string ts = 2;
+  double price = 3;
+  int64 size = 4;
+  string side = 5;
+}
+
+message DomLevel {
+  double price = 1;
+  int64 size = 2;
+}
+
+message DomMessage {
+  string symbol = 1;
+  string ts = 2;
+  repeated DomLevel bids = 3;
+  repeated DomLevel asks = 4;
+}

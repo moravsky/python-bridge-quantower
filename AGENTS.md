@@ -4,11 +4,16 @@ This file provides guidance to coding agents when working with code in this repo
 
 ## Project
 
-PythonBridgeQuantower is a Quantower Strategy that streams trade prints (last
-prices) out of Quantower over a localhost TCP socket as newline-delimited JSON.
-A companion Python TUI (not in the C# project) reads the stream and renders a
-live scrolling time-and-sales tape. The strategy targets .NET 8.0, x64. See
-`specs/01-socket-bridge.md` for the full specification.
+PythonBridgeQuantower is a Quantower Strategy that streams trade prints
+(last prices) and DOM snapshots out of Quantower over a ZeroMQ PUB socket,
+with Protobuf-encoded payloads on topics `trade` and `dom`. Shared schema
+lives in `proto/messages.proto`; both C# and Python use generated types
+(`Grpc.Tools` for C# at build, `grpcio-tools` for Python via the
+committed `tui/messages_pb2.py`). A companion Python TUI (not in the C#
+project) connects as a SUB and renders a live scrolling time-and-sales
+tape plus a DOM ladder. The strategy targets .NET 8.0, x64. See
+`specs/01-socket-bridge.md` for the original v1 specification (note:
+v1 used newline-JSON over raw TCP; v2 uses ZeroMQ + Protobuf).
 
 ## Build
 
@@ -56,7 +61,8 @@ why things are the way they are, not just what they are.
 - x64 (required for Quantower)
 - Windows 11 ARM running x64 via Prism/emulation
 - TradingPlatform.BusinessLayer (Quantower API)
-- Python side: `rich` for TUI, stdlib `socket` and `json`
+- C# side: `NetMQ` (ZeroMQ), `Google.Protobuf` + `Grpc.Tools` (codegen only) for wire
+- Python side: `textual` (includes `rich`) for TUI, `pyzmq` + `protobuf` + `grpcio-tools` (codegen only) for wire
 
 ## Reference Source
 

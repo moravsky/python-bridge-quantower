@@ -1,1 +1,4 @@
 textual==8.2.7
+pyzmq==26.2.0
+protobuf==5.27.2
+grpcio-tools==1.66.2
