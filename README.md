@@ -1,16 +1,20 @@
 # python-bridge-quantower
 
 Streams live trade prints and Level 2 order book data from Quantower into a
-Python terminal UI over a localhost TCP socket.
+Python terminal UI over a ZeroMQ PUB/SUB socket with Protobuf-encoded
+payloads. Shared schema lives in `proto/messages.proto`; both sides use
+generated types.
 
 https://github.com/user-attachments/assets/dc364044-a92d-4e19-bd40-35471f3ce35e
 
 ## What it does
 
 - **C# Strategy** runs inside Quantower, subscribes to trades and L2 data,
-  and pushes newline-delimited JSON to a TCP socket.
-- **Python TUI** listens on the socket and renders a live scrolling trade
-  tape and a DOM (depth of market) price ladder with proportional bars.
+  and publishes Protobuf-encoded messages on a ZeroMQ PUB socket bound to
+  `tcp://127.0.0.1:<port>`. Topics are `trade` and `dom`.
+- **Python TUI** connects as a SUB, subscribes to both topics, parses
+  Protobuf based on topic, and renders a live scrolling trade tape and a
+  DOM (depth of market) price ladder with proportional bars.
 
 ## Quick start
 
@@ -79,18 +83,11 @@ dotnet build PythonBridgeQuantower/PythonBridgeQuantower.csproj -c Debug
 
 ### Run
 
-1. **Start the TUI first.** It is the TCP server -- the strategy
-   connects to it, so it has to be running before you start the strategy.
-   From the extracted folder (or repo root):
+Either side can start first. The strategy binds the PUB socket; the
+TUI connects as a SUB and waits. ZeroMQ holds the connection until
+the other side is up.
 
-   ```powershell
-   python tui/tape.py
-   ```
-
-   The TUI opens and shows `Listening on 127.0.0.1:8765` in the title
-   bar.
-
-2. **Add and run the strategy in Quantower.** Open Quantower's Strategy
+1. **Add and run the strategy in Quantower.** Open Quantower's Strategy
    Manager, click the `+` to add a strategy, and pick **Trade Stream**
    from the list. Set the parameters:
 
@@ -101,9 +98,24 @@ dotnet build PythonBridgeQuantower/PythonBridgeQuantower.csproj -c Debug
    | DOM Levels     | 10                          |
    | Sample Percent | 100                         |
 
-   Click **Run**. The TUI immediately shows the symbol, a live trade
-   tape, and a DOM ladder. A capture file is saved automatically to
+   Click **Run**. The strategy log shows
+   `Publishing on tcp://127.0.0.1:8765`.
+
+2. **Start the TUI.** From the extracted folder (or repo root):
+
+   ```powershell
+   python tui/tape.py
+   ```
+
+   The title bar shows `Subscribing to tcp://127.0.0.1:8765`. As soon
+   as messages arrive, the TUI shows the symbol, a live trade tape,
+   and a DOM ladder. A capture file is saved automatically to
    `captures/` next to the `tui/` folder.
+
+   Note: ZeroMQ PUB/SUB is fire-and-forget -- messages published
+   before the TUI subscribes are dropped (this is normal ZMQ "slow
+   joiner" behavior). The TUI captures everything it observes from
+   the moment it subscribes onward.
 
 ### Replay a capture file
 
@@ -131,31 +143,58 @@ Set these in Quantower's strategy UI:
 |----------------|---------|--------------------------------------|
 | Symbol         | --      | Instrument to stream                 |
 | Sample Percent | 100     | % of trades to emit (1-100)          |
-| Port           | 8765    | TCP port to connect to               |
+| Port           | 8765    | TCP port the PUB socket binds to     |
 | DOM Levels     | 10      | Number of order book levels per side |
 
 ## Wire protocol
 
-Newline-delimited JSON over TCP. Two message types:
+ZeroMQ PUB/SUB over loopback TCP, with Protobuf-encoded payloads.
+Strategy is the publisher (binds `tcp://127.0.0.1:<port>`); any
+subscriber connects with a ZMQ SUB socket.
 
-**Trade:**
-```json
-{"type":"trade","symbol":"NQ","ts":"2026-05-27T07:08:28.288Z","price":30111.75,"size":1,"side":"buy"}
-```
+Each ZMQ message is two frames: a topic string (`trade` or `dom`) and
+a Protobuf payload. The schema lives in `proto/messages.proto`. See
+[ARCHITECTURE.md](ARCHITECTURE.md) for the schema dump, codegen
+workflow, capture-file format, and design rationale.
 
-**DOM snapshot (throttled to ~10/sec):**
-```json
-{"type":"dom","symbol":"NQ","ts":"2026-05-27T07:08:28.288Z","bids":[{"price":30111.25,"size":3}],"asks":[{"price":30112.00,"size":5}]}
+### Minimal Python subscriber
+
+If you want to write your own consumer instead of using the TUI:
+
+```python
+import zmq
+
+from messages_pb2 import DomMessage, TradeMessage
+
+ctx = zmq.Context()
+sub = ctx.socket(zmq.SUB)
+sub.connect("tcp://127.0.0.1:8765")
+sub.setsockopt(zmq.SUBSCRIBE, b"")  # all topics; use b"trade" or b"dom" to filter
+
+while True:
+    topic_bytes, payload = sub.recv_multipart()
+    topic = topic_bytes.decode()
+    if topic == "trade":
+        msg = TradeMessage()
+    elif topic == "dom":
+        msg = DomMessage()
+    else:
+        continue
+    msg.ParseFromString(payload)
+    print(topic, msg.symbol, msg.price if topic == "trade" else len(msg.bids))
 ```
 
 ## Project layout
 
 ```
+proto/
+  messages.proto            shared schema for the wire (single source of truth)
 PythonBridgeQuantower/
   TradeStreamStrategy.cs    C# strategy (the producer)
-  PythonBridgeQuantower.csproj
+  PythonBridgeQuantower.csproj   references Grpc.Tools for protoc-at-build
 tui/
   tape.py                   Python TUI (the consumer)
+  messages_pb2.py           generated by grpcio-tools from messages.proto
 captures/                   Auto-saved JSONL capture files
 specs/                      Design specs
 ```

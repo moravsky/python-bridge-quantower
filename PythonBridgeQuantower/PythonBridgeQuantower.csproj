@@ -13,10 +13,22 @@
     <AlgoType>Strategy</AlgoType>
     <AssemblyName>PythonBridgeQuantower</AssemblyName>
     <RootNamespace>PythonBridgeQuantower</RootNamespace>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <StartAction>Program</StartAction>
     <StartProgram>$(QT_Path)\Console.StarterNew.exe</StartProgram>
     <StartArguments>--address 127.0.0.1 --port 52879</StartArguments>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NetMQ" Version="4.0.2.1" />
+    <PackageReference Include="Google.Protobuf" Version="3.27.2" />
+    <PackageReference Include="Grpc.Tools" Version="2.66.0">
+      <PrivateAssets>All</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Protobuf Include="..\proto\messages.proto" GrpcServices="None" />
+  </ItemGroup>
   <ItemGroup>
     <Reference Include="TradingPlatform.BusinessLayer">
       <HintPath>$(QT_Path)\bin\TradingPlatform.BusinessLayer.dll</HintPath>
