@@ -5,7 +5,7 @@ Python terminal UI over a ZeroMQ PUB/SUB socket with Protobuf-encoded
 payloads. Shared schema lives in `proto/messages.proto`; both sides use
 generated types.
 
-https://github.com/user-attachments/assets/dc364044-a92d-4e19-bd40-35471f3ce35e
+https://github.com/user-attachments/assets/3515a38c-90cf-4969-ab59-d2dfae0e5f8e
 
 ## What it does
 
@@ -26,12 +26,23 @@ https://github.com/user-attachments/assets/dc364044-a92d-4e19-bd40-35471f3ce35e
 - .NET 10.0 SDK is only needed if you build from source -- see
   [.NET 10.0 SDK (Windows x64)](https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.300/dotnet-sdk-10.0.300-win-x64.exe).
 
-### Install (prebuilt release, recommended)
+### Install (build from source, recommended)
+
+Requires the .NET 10 SDK linked in Prerequisites.
+
+```powershell
+git clone https://github.com/moravsky/python-bridge-quantower.git
+cd python-bridge-quantower
+pip install -r requirements.txt
+dotnet build PythonBridgeQuantower/PythonBridgeQuantower.csproj -c Debug
+.\deploy.ps1                     # deploys to C:\Quantower
+.\deploy.ps1 -Dev                # deploys to C:\QuantowerDev
+```
+
+### Install (prebuilt release)
 
 1. **Download** the latest `python-bridge-quantower-<version>-qt1.145.17.zip`
    from [Releases](https://github.com/moravsky/python-bridge-quantower/releases).
-   The `qt1.145.17` in the filename is the Quantower version it was built
-   against -- it must match yours.
 
 2. **Extract** the zip somewhere convenient (e.g. your home directory).
    You will get:
@@ -67,19 +78,6 @@ https://github.com/user-attachments/assets/dc364044-a92d-4e19-bd40-35471f3ce35e
 
 5. **Start Quantower** (or restart it if it was already running -- it
    loads strategies from `Settings\Scripts\Strategies\` on startup).
-
-### Install (build from source)
-
-Requires the .NET 10 SDK linked in Prerequisites.
-
-```powershell
-git clone https://github.com/moravsky/python-bridge-quantower.git
-cd python-bridge-quantower
-pip install -r requirements.txt
-dotnet build PythonBridgeQuantower/PythonBridgeQuantower.csproj -c Debug
-.\deploy.ps1                     # deploys to C:\Quantower
-.\deploy.ps1 -Dev                # deploys to C:\QuantowerDev
-```
 
 ### Run
 
