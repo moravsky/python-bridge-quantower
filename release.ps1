@@ -32,20 +32,26 @@ $stage = "$artifacts\stage"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-# Strategy DLL + deps + pdb
+# Strategy DLL + all runtime dependencies (NetMQ, AsyncIO, NaCl,
+# Google.Protobuf, etc.). The Quantower host only supplies the SDK
+# (TradingPlatform.BusinessLayer, marked <Private>False</Private>),
+# so every other DLL must ship in the package or the strategy fails
+# to load. Mirrors deploy.ps1: copy all *.dll, *.deps.json, *.pdb.
 $stratDest = "$stage\PythonBridgeQuantower"
 New-Item -ItemType Directory -Force -Path $stratDest | Out-Null
 $buildOut = "$root\PythonBridgeQuantower\bin\Release"
-Copy-Item "$buildOut\PythonBridgeQuantower.dll" $stratDest
-Copy-Item "$buildOut\PythonBridgeQuantower.deps.json" $stratDest
-Copy-Item "$buildOut\PythonBridgeQuantower.pdb" $stratDest
+foreach ($pattern in @("*.dll", "*.deps.json", "*.pdb")) {
+    Copy-Item "$buildOut\$pattern" $stratDest -Force
+}
 
-# Python TUI
+# Python TUI -- tape.py needs the generated messages_pb2.py beside it
 $tuiDest = "$stage\tui"
 New-Item -ItemType Directory -Force -Path $tuiDest | Out-Null
 Copy-Item "$root\tui\tape.py" $tuiDest
+Copy-Item "$root\tui\messages_pb2.py" $tuiDest
 
 # Top-level files
+Copy-Item "$root\install.ps1" $stage
 Copy-Item "$root\requirements.txt" $stage
 Copy-Item "$root\README.md" $stage
 

@@ -41,6 +41,8 @@ dotnet build PythonBridgeQuantower/PythonBridgeQuantower.csproj -c Debug
 
 ### Install (prebuilt release)
 
+No .NET SDK needed -- the zip ships the compiled strategy.
+
 1. **Download** the latest `python-bridge-quantower-<version>-qt1.145.17.zip`
    from [Releases](https://github.com/moravsky/python-bridge-quantower/releases).
 
@@ -48,36 +50,41 @@ dotnet build PythonBridgeQuantower/PythonBridgeQuantower.csproj -c Debug
    You will get:
 
    ```
-   PythonBridgeQuantower/   <-- this folder goes into Quantower
+   install.ps1              <-- one-command installer
+   PythonBridgeQuantower/   <-- compiled strategy + runtime DLLs
      PythonBridgeQuantower.dll
+     NetMQ.dll, Google.Protobuf.dll, ... (runtime deps)
      PythonBridgeQuantower.deps.json
      PythonBridgeQuantower.pdb
    tui/
      tape.py
+     messages_pb2.py
    requirements.txt
    README.md
    ```
 
-3. **Install the strategy** in Quantower. Copy the entire
-   `PythonBridgeQuantower/` folder (the one containing the .dll) into:
-
-   ```
-   C:\Quantower\Settings\Scripts\Strategies\
-   ```
-
-   Create the `Strategies` folder if it does not exist. The final path
-   must be
-   `C:\Quantower\Settings\Scripts\Strategies\PythonBridgeQuantower\PythonBridgeQuantower.dll`.
-
-4. **Install Python dependencies.** Open PowerShell in the extracted
-   folder (the one containing `requirements.txt`) and run:
+3. **Run the installer** from PowerShell in the extracted folder:
 
    ```powershell
-   pip install -r requirements.txt
+   .\install.ps1                          # default Quantower at C:\Quantower
+   .\install.ps1 -QuantowerPath D:\Quantower
+   .\install.ps1 -Python py               # use a different Python launcher
+   .\install.ps1 -SkipPython              # strategy only, manage deps yourself
    ```
 
-5. **Start Quantower** (or restart it if it was already running -- it
+   It copies the strategy (DLLs + runtime deps) into
+   `<QuantowerPath>\Settings\Scripts\Strategies\PythonBridgeQuantower`
+   and installs the Python TUI dependencies via
+   `pip install -r requirements.txt`.
+
+4. **Start Quantower** (or restart it if it was already running -- it
    loads strategies from `Settings\Scripts\Strategies\` on startup).
+
+If you prefer to install by hand, copy the entire
+`PythonBridgeQuantower/` folder into
+`<QuantowerPath>\Settings\Scripts\Strategies\` (so the final path is
+`...\Strategies\PythonBridgeQuantower\PythonBridgeQuantower.dll`) and run
+`pip install -r requirements.txt` yourself.
 
 ### Run
 
